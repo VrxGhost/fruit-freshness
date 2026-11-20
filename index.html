@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fruit Freshness Checker | MobileNetV2 in the browser</title>
+<meta name="description" content="Classifies apples, bananas and oranges as fresh or rotten with a MobileNetV2 model that runs entirely in your browser.">
+<style>
+  :root {
+    --ink: #16181d; --muted: #5d636f; --line: #e3e5ea; --bg: #f6f7f9; --card: #ffffff;
+    --fresh: #1f7a3f; --fresh-bg: #e8f5ec; --rotten: #b42318; --rotten-bg: #fdecea; --unsure: #9a5b00; --unsure-bg: #fff4e0;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+         color: var(--ink); background: var(--bg); line-height: 1.5; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 32px 20px 48px; }
+  header .eyebrow { font-size: 13px; color: var(--muted); letter-spacing: .02em; }
+  h1 { font-size: 34px; line-height: 1.15; margin: 6px 0 10px; letter-spacing: -.01em; }
+  .lead { font-size: 17px; color: var(--muted); max-width: 720px; margin: 0 0 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .chip { font-size: 13px; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .status { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+  .bar { flex: 1; max-width: 260px; height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: var(--ink); transition: width .2s; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #c5c9d1; flex: none; }
+  .dot.ok { background: var(--fresh); } .dot.err { background: var(--rotten); }
+  .drop { border: 2px dashed #c9cdd5; border-radius: var(--radius); padding: 28px 16px; text-align: center; transition: .15s; }
+  .drop.over { border-color: var(--ink); background: #fafbfc; }
+  .drop p { margin: 0 0 14px; color: var(--muted); }
+  .btn { font: inherit; font-size: 15px; border: 1px solid var(--ink); background: var(--ink); color: #fff; border-radius: 8px;
+         padding: 10px 18px; cursor: pointer; margin: 4px; }
+  .btn.ghost { background: #fff; color: var(--ink); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .samples { margin-top: 18px; text-align: left; }
+  .samples span { font-size: 13px; color: var(--muted); }
+  .thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+  .thumbs button { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 4px; cursor: pointer; text-align: center; }
+  .thumbs img { width: 76px; height: 76px; object-fit: cover; border-radius: 7px; display: block; }
+  .thumbs small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  #results { display: none; margin-top: 22px; }
+  .verdict { border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px; border: 1px solid; }
+  .verdict h2 { margin: 0 0 4px; font-size: 24px; }
+  .verdict p { margin: 0; font-size: 15px; }
+  .verdict.fresh { background: var(--fresh-bg); border-color: #b9dfc5; color: var(--fresh); }
+  .verdict.rotten { background: var(--rotten-bg); border-color: #f5c2bd; color: var(--rotten); }
+  .verdict.unsure { background: var(--unsure-bg); border-color: #f3d39a; color: var(--unsure); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .step h3 { margin: 0 0 2px; font-size: 14px; }
+  .step .n { font-size: 12px; color: var(--muted); }
+  .step .frame { margin-top: 10px; aspect-ratio: 1 / 1; background: #f0f1f4; border-radius: 8px; overflow: hidden;
+                 display: flex; align-items: center; justify-content: center; }
+  .step .frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .step .frame canvas { max-width: 100%; max-height: 100%; display: block; }
+  .step .frame canvas { width: 100%; height: 100%; image-rendering: auto; }
+  .step .cap { font-size: 12.5px; color: var(--muted); margin: 8px 0 0; }
+  .probs { margin-top: 10px; }
+  .prow { display: grid; grid-template-columns: 92px 1fr 46px; gap: 8px; align-items: center; font-size: 12.5px; margin-bottom: 7px; }
+  .ptrack { height: 8px; background: #eef0f3; border-radius: 99px; overflow: hidden; }
+  .ptrack > div { height: 100%; background: #9aa1ad; border-radius: 99px; }
+  .prow.top { font-weight: 600; } .prow.top .ptrack > div { background: var(--ink); }
+  .prow .pct { text-align: right; font-variant-numeric: tabular-nums; }
+  .meta { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  details { margin-top: 26px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 16px; }
+  .about { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .about h4 { margin: 0 0 6px; font-size: 14px; }
+  .about ul { margin: 0; padding-left: 18px; font-size: 14px; color: #3a3f48; }
+  .about li { margin-bottom: 4px; }
+  table { border-collapse: collapse; font-size: 14px; width: 100%; }
+  td, th { border-bottom: 1px solid var(--line); padding: 6px 4px; text-align: left; }
+  th { font-weight: 600; }
+  footer { margin-top: 30px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+  footer a { color: var(--ink); }
+  .err-msg { color: var(--rotten); font-size: 14px; margin-top: 10px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: repeat(2, 1fr); } .about { grid-template-columns: 1fr; } }
+  @media (max-width: 480px) { h1 { font-size: 27px; } .grid { grid-template-columns: 1fr; } .wrap { padding-top: 22px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Neural Network &amp; Deep Learning (PCCCS582) &middot; B.Tech CSE &middot; IEM Kolkata</div>
+    <h1>Fruit Freshness Checker</h1>
+    <p class="lead">Take or upload a photo of one apple, banana or orange. A MobileNetV2 model decides whether it is fresh or rotten
+      and shows where it looked. The model runs entirely in your browser, so your photo never leaves this device.</p>
+    <div class="chips">
+      <span class="chip">SDG 2 &middot; Zero Hunger</span>
+      <span class="chip">SDG 13 &middot; Climate Action</span>
+      <span class="chip">SDG 3 &middot; Good Health and Well-being</span>
+    </div>
+  </header>
+
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">Loading the model&hellip;</span>
+    <div class="bar" id="bar"><div id="barFill"></div></div></div>
+
+  <section class="card">
+    <div class="drop" id="drop">
+      <p>Drop a photo here, or</p>
+      <button class="btn" id="btnChoose" disabled>Choose a photo</button>
+      <button class="btn ghost" id="btnCamera" disabled>Take a photo</button>
+      <input type="file" id="fileChoose" accept="image/*" hidden>
+      <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
+    </div>
+    <div class="samples">
+      <span>Or try a sample image from the dataset:</span>
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+    <div class="err-msg" id="err"></div>
+  </section>
+
+  <section id="results">
+    <div class="verdict" id="verdict"><h2 id="vTitle"></h2><p id="vText"></p></div>
+    <div class="grid">
+      <div class="step"><div class="n">Step 1</div><h3>Input</h3>
+        <div class="frame"><img id="inImg" alt="Your input photo"></div>
+        <p class="cap">The photo as given.</p></div>
+      <div class="step"><div class="n">Step 2</div><h3>Preprocessing</h3>
+        <div class="frame"><canvas id="cvPrep" width="224" height="224" aria-label="Preprocessed 224 by 224 image"></canvas></div>
+        <p class="cap">Resized to 256, centre-cropped to 224&nbsp;&times;&nbsp;224, normalised with ImageNet mean and std.</p></div>
+      <div class="step"><div class="n">Step 3</div><h3>Prediction</h3>
+        <div class="probs" id="probs"></div>
+        <p class="cap">MobileNetV2 softmax probabilities for all six classes.</p></div>
+      <div class="step"><div class="n">Step 4</div><h3>Where it looked</h3>
+        <div class="frame"><canvas id="cvCam" width="224" height="224" aria-label="Heatmap of the regions the model used"></canvas></div>
+        <p class="cap">Grad-CAM heatmap: red marks the regions that most supported the prediction.</p></div>
+    </div>
+    <div class="meta" id="meta"></div>
+  </section>
+
+  <details>
+    <summary>How it works, results and limitations</summary>
+    <div class="about">
+      <div class="card">
+        <h4>How it works</h4>
+        <ul>
+          <li>A MobileNetV2 network pretrained on ImageNet was fine-tuned in PyTorch on the Kaggle dataset <em>Fruits fresh and rotten for classification</em> (6 classes).</li>
+          <li>The dataset's 13,599 images come from only 1,511 photographs, and its provided test split was 100% leaked, so the data was re-split by original photograph.</li>
+          <li>The trained model was exported to ONNX and runs here with ONNX Runtime Web. No server is involved.</li>
+          <li>Predictions below 70% confidence are reported as uncertain and should be checked by a person.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Results on the leak-free test set (2,007 images)</h4>
+        <table>
+          <tr><th>Model</th><th>Accuracy</th><th>Macro F1</th></tr>
+          <tr><td>MobileNetV2 (transfer learning)</td><td>99.50%</td><td>0.9947</td></tr>
+          <tr><td>Custom CNN (from scratch)</td><td>90.03%</td><td>0.9037</td></tr>
+        </table>
+        <p class="cap">Rotten-fruit recall: 99.65%. No fresh fruit was wrongly rejected.</p>
+      </div>
+      <div class="card">
+        <h4>Limitations</h4>
+        <ul>
+          <li>Trained only on apples, bananas and oranges, one fruit per photo.</li>
+          <li>Any photo, even of a non-fruit object, is forced into one of the six classes; the 70% threshold reduces but does not remove this.</li>
+          <li>Training images are clean close-ups, so real-world photos with clutter or poor light may score lower.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Project</h4>
+        <ul>
+          <li id="team">Built by Arya Dutta and team, Institute of Engineering &amp; Management, Kolkata.</li>
+          <li>Dataset: S. R. Kalluri, <a href="https://www.kaggle.com/datasets/sriramr/fruits-fresh-and-rotten-for-classification" target="_blank" rel="noopener">Kaggle</a>.</li>
+          <li>Code: <a href="https://github.com/VrxGhost/fruit-freshness" target="_blank" rel="noopener">github.com/VrxGhost/fruit-freshness</a></li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+  <footer>A university project prototype, not a certified food-safety tool. Always inspect food that looks doubtful.</footer>
+</div>
+
+<script>
+// ---------------- configuration ----------------
+const ORT_VERSION = '1.20.1';
+const CDN = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+const MODEL_URL = 'model/fruit_freshness.onnx';
+const CLASSES = ['freshapples', 'freshbanana', 'freshoranges', 'rottenapples', 'rottenbanana', 'rottenoranges'];
+const NICE = ['Fresh apple', 'Fresh banana', 'Fresh orange', 'Rotten apple', 'Rotten banana', 'Rotten orange'];
+const SAMPLES = ['fresh-apple', 'fresh-banana', 'fresh-orange', 'rotten-apple', 'rotten-banana', 'rotten-orange'];
+const THRESHOLD = 0.70;
+const MEAN = [0.485, 0.456, 0.406], STD = [0.229, 0.224, 0.225];
+const SIZE = 224, RESIZE = 256, CAM_ALPHA = 0.45;
+
+const $ = id => document.getElementById(id);
+let session = null, busy = false;
+
+function setStatus(text, state, pct) {
+  $('statusText').textContent = text;
+  $('dot').className = 'dot' + (state ? ' ' + state : '');
+  if (pct === null) $('bar').style.display = 'none';
+  else if (pct !== undefined) { $('bar').style.display = ''; $('barFill').style.width = Math.round(pct * 100) + '%'; }
+}
+
+// ---------------- load ONNX Runtime: local copy first (offline use), then the CDN ----------------
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = () => { s.remove(); reject(new Error('could not load ' + src)); };
+    document.head.appendChild(s);
+  });
+}
+async function loadOrt() {
+  try {
+    await loadScript('ort/ort.wasm.min.js');
+    ort.env.wasm.wasmPaths = new URL('ort/', location.href).href;
+  } catch (e) {
+    await loadScript(CDN + 'ort.wasm.min.js');
+    ort.env.wasm.wasmPaths = CDN;
+  }
+  ort.env.wasm.numThreads = 1;
+}
+
+// ---------------- download the model with a progress bar, then create the session ----------------
+async function loadModel() {
+  const res = await fetch(MODEL_URL);
+  if (!res.ok) throw new Error(`model file not found (${res.status})`);
+  const total = Number(res.headers.get('Content-Length')) || 0;
+  let bytes;
+  if (res.body && res.body.getReader) {
+    const reader = res.body.getReader(), parts = [];
+    let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value); got += value.length;
+      setStatus(`Loading the model… ${(got / 1e6).toFixed(1)} MB` + (total ? ` of ${(total / 1e6).toFixed(1)} MB` : ''),
+                '', total ? Math.min(got / total, 1) : undefined);
+    }
+    bytes = new Uint8Array(got); let off = 0;
+    for (const p of parts) { bytes.set(p, off); off += p.length; }
+  } else {
+    bytes = new Uint8Array(await res.arrayBuffer());
+  }
+  setStatus('Starting the model…', '', 1);
+  return ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+}
+
+// ---------------- image helpers ----------------
+async function fileToImage(file) {
+  if (window.createImageBitmap) {
+    try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) { /* fall back below */ }
+  }
+  return urlToImage(URL.createObjectURL(file));
+}
+function urlToImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img); img.onerror = () => reject(new Error('This file could not be read as an image.'));
+    img.src = url;
+  });
+}
+const dims = img => [img.naturalWidth || img.width, img.naturalHeight || img.height];
+
+// Smooth downscale in halving steps (close to Pillow's antialiased resize used in training)
+function resizeTo(img, w, h) {
+  let [cw, ch] = dims(img), src = img;
+  while (cw / 2 >= w && ch / 2 >= h) {
+    const c = document.createElement('canvas');
+    c.width = Math.round(cw / 2); c.height = Math.round(ch / 2);
+    const x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    x.drawImage(src, 0, 0, c.width, c.height);
+    src = c; cw = c.width; ch = c.height;
+  }
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const ctx = out.getContext('2d'); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, w, h);
+  return out;
+}
+
+// Same as torchvision: Resize(256) on the shorter side, CenterCrop(224), ToTensor, Normalize
+function preprocess(img) {
+  const [w, h] = dims(img);
+  const [nw, nh] = w <= h ? [RESIZE, Math.floor(RESIZE * h / w)] : [Math.floor(RESIZE * w / h), RESIZE];
+  const resized = resizeTo(img, nw, nh);
+  const left = Math.round((nw - SIZE) / 2), top = Math.round((nh - SIZE) / 2);
+  const cv = $('cvPrep'), ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, SIZE, SIZE);
+  ctx.drawImage(resized, left, top, SIZE, SIZE, 0, 0, SIZE, SIZE);
+  const rgba = ctx.getImageData(0, 0, SIZE, SIZE);
+  const plane = SIZE * SIZE, data = new Float32Array(3 * plane);
+  for (let i = 0; i < plane; i++) {
+    for (let c = 0; c < 3; c++) data[c * plane + i] = (rgba.data[i * 4 + c] / 255 - MEAN[c]) / STD[c];
+  }
+  return { tensor: new ort.Tensor('float32', data, [1, 3, SIZE, SIZE]), rgba };
+}
+
+// ---------------- heatmap: matplotlib 'jet' colours, bilinear upsampling like Pillow ----------------
+const JET = {
+  r: [[0, 0], [0.35, 0], [0.66, 1], [0.89, 1], [1, 0.5]],
+  g: [[0, 0], [0.125, 0], [0.375, 1], [0.64, 1], [0.91, 0], [1, 0]],
+  b: [[0, 0.5], [0.11, 1], [0.34, 1], [0.65, 0], [1, 0]],
+};
+function seg(pts, v) {
+  for (let i = 1; i < pts.length; i++) {
+    if (v <= pts[i][0]) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; return y0 + (y1 - y0) * (v - x0) / (x1 - x0); }
+  }
+  return pts[pts.length - 1][1];
+}
+function drawCam(cam7, rgba) {
+  let max = 0;
+  const cam = cam7.map(v => Math.max(v, 0));
+  for (const v of cam) max = Math.max(max, v);
+  const n = 7, ctx = $('cvCam').getContext('2d'), out = ctx.createImageData(SIZE, SIZE);
+  for (let y = 0; y < SIZE; y++) {
+    const gy = Math.min(Math.max((y + 0.5) * n / SIZE - 0.5, 0), n - 1), y0 = Math.floor(gy), y1 = Math.min(y0 + 1, n - 1), fy = gy - y0;
+    for (let x = 0; x < SIZE; x++) {
+      const gx = Math.min(Math.max((x + 0.5) * n / SIZE - 0.5, 0), n - 1), x0 = Math.floor(gx), x1 = Math.min(x0 + 1, n - 1), fx = gx - x0;
+      const v = (cam[y0 * n + x0] * (1 - fx) + cam[y0 * n + x1] * fx) * (1 - fy) + (cam[y1 * n + x0] * (1 - fx) + cam[y1 * n + x1] * fx) * fy;
+      const t = max > 0 ? v / max : 0, i = (y * SIZE + x) * 4;
+      const heat = [seg(JET.r, t), seg(JET.g, t), seg(JET.b, t)];
+      for (let c = 0; c < 3; c++) out.data[i + c] = Math.round((1 - CAM_ALPHA) * rgba.data[i + c] + CAM_ALPHA * 255 * heat[c]);
+      out.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+// ---------------- run the model and show every stage ----------------
+function showProbs(probs, top) {
+  const order = [...probs.keys()].sort((a, b) => probs[b] - probs[a]);
+  $('probs').innerHTML = order.map(k => `
+    <div class="prow${k === top ? ' top' : ''}"><span>${NICE[k]}</span>
+      <div class="ptrack"><div style="width:${(probs[k] * 100).toFixed(1)}%"></div></div>
+      <span class="pct">${(probs[k] * 100).toFixed(1)}%</span></div>`).join('');
+}
+function showVerdict(k, p) {
+  const v = $('verdict'), pct = (p * 100).toFixed(1) + '%';
+  if (p < THRESHOLD) {
+    v.className = 'verdict unsure'; $('vTitle').textContent = 'Uncertain: inspect by hand';
+    $('vText').textContent = `Best guess is ${NICE[k].toLowerCase()}, but only ${pct} confident. This also happens when the photo is not an apple, banana or orange.`;
+  } else if (CLASSES[k].startsWith('rotten')) {
+    v.className = 'verdict rotten'; $('vTitle').textContent = `${NICE[k]}: remove from supply`;
+    $('vText').textContent = `${pct} confident. Not safe to sell or donate.`;
+  } else {
+    v.className = 'verdict fresh'; $('vTitle').textContent = `${NICE[k]}: OK to distribute`;
+    $('vText').textContent = `${pct} confident.`;
+  }
+}
+async function analyse(img, previewUrl) {
+  if (!session || busy) return;
+  busy = true; $('err').textContent = '';
+  try {
+    $('inImg').src = previewUrl;
+    const { tensor, rgba } = preprocess(img);
+    const t0 = performance.now();
+    const out = await session.run({ image: tensor });
+    const ms = performance.now() - t0;
+    const probs = Array.from(out.probs.data), k = probs.indexOf(Math.max(...probs));
+    const cams = out.cams.data, cam7 = Array.from(cams.slice(k * 49, k * 49 + 49));
+    showVerdict(k, probs[k]); showProbs(probs, k); drawCam(cam7, rgba);
+    const [w, h] = dims(img);
+    $('meta').textContent = `Input ${w} × ${h} px · inference ${ms.toFixed(0)} ms on this device · threshold ${THRESHOLD * 100}%`;
+    $('results').style.display = 'block';
+    $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    $('err').textContent = 'Something went wrong: ' + e.message;
+  } finally { busy = false; }
+}
+async function analyseFile(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { $('err').textContent = 'Please choose an image file.'; return; }
+  try { await analyse(await fileToImage(file), URL.createObjectURL(file)); }
+  catch (e) { $('err').textContent = e.message + ' (iPhone HEIC photos work best in Safari, or share them as JPG.)'; }
+}
+
+// ---------------- wire up the page ----------------
+$('btnChoose').onclick = () => $('fileChoose').click();
+$('btnCamera').onclick = () => $('fileCamera').click();
+$('fileChoose').onchange = e => { analyseFile(e.target.files[0]); e.target.value = ''; };
+$('fileCamera').onchange = e => { analyseFile(e.target.files[0]); e.target.value = ''; };
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => analyseFile(e.dataTransfer.files[0]));
+$('thumbs').innerHTML = SAMPLES.map((s, i) =>
+  `<button data-src="samples/${s}.jpg" disabled><img src="samples/${s}.jpg" alt="${NICE[i]} sample"><small>${NICE[i]}</small></button>`).join('');
+$('thumbs').querySelectorAll('button').forEach(b => b.onclick = async () => {
+  try { await analyse(await urlToImage(b.dataset.src), b.dataset.src); } catch (e) { $('err').textContent = e.message; }
+});
+
+(async () => {
+  try {
+    if (location.protocol === 'file:') throw new Error('Open this page through a web server (see README: python -m http.server), not by double-clicking the file.');
+    await loadOrt();
+    session = await loadModel();
+    setStatus('Model ready · MobileNetV2 · runs on your device', 'ok', null);
+    document.querySelectorAll('button').forEach(b => b.disabled = false);
+  } catch (e) {
+    setStatus('The model could not be loaded', 'err', null);
+    $('err').textContent = e.message + ' If this is the first visit, check the internet connection and reload.';
+  }
+})();
+</script>
+</body>
+</html>
