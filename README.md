@@ -4,7 +4,7 @@ Classifies a photo of an apple, banana or orange as **fresh or rotten** with a M
 
 **Live demo:** https://vrxghost.github.io/fruit-freshness/
 
-Group project for *Neural Network & Deep Learning (PCCCS582)*, B.Tech CSE, Institute of Engineering & Management, Kolkata. It supports **SDG 2** (Zero Hunger), **SDG 13** (Climate Action) and **SDG 3** (Good Health and Well-being).
+It supports **SDG 2** (Zero Hunger), **SDG 13** (Climate Action) and **SDG 3** (Good Health and Well-being).
 
 ## What the app shows
 
@@ -61,7 +61,7 @@ get_offline_files.py        downloads ONNX Runtime for offline use
 - Trained only on apples, bananas and oranges, one fruit per photo.
 - Any image, even a non-fruit, is forced into one of six classes; the 70% threshold reduces but does not remove this.
 - Training images are clean close-ups, so cluttered or poorly lit real-world photos may score lower.
-- A university prototype, not a certified food-safety tool.
+- A prototype, not a certified food-safety tool.
 
 ## Credits
 
